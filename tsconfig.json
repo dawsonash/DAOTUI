@@ -1,0 +1,11 @@
+{
+	"extends": "@sindresorhus/tsconfig",
+	"compilerOptions": {
+		"jsx": "react-jsx",
+		"rootDir": "source",
+		"outDir": "dist",
+		"module": "nodenext",
+		"moduleResolution": "nodenext"
+	},
+	"include": ["source"]
+}
