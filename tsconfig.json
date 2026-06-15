@@ -5,7 +5,8 @@
 		"rootDir": "source",
 		"outDir": "dist",
 		"module": "nodenext",
-		"moduleResolution": "nodenext"
+		"moduleResolution": "nodenext",
+		"types": ["node"]
 	},
 	"include": ["source"]
 }
