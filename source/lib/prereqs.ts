@@ -22,9 +22,10 @@ async function onPath(command: string): Promise<boolean> {
 }
 
 /**
- * Run all setup prerequisite checks. OpenSSH tools are required; the Azure CLI
- * is recommended but a warning only, so students can still finish key setup on a
- * machine where `az` hasn't been installed yet.
+ * Run all setup prerequisite checks. OpenSSH tools and the Azure CLI (installed
+ * and logged in) are all required: the workflow shells out to `az` to start and
+ * deallocate the VM, so a student who finishes setup without it can't actually
+ * run the tool.
  */
 export async function runPrereqChecks(): Promise<PrereqCheck[]> {
 	const [ssh, scp, keygen, azInstalled] = await Promise.all([
@@ -44,14 +45,14 @@ export async function runPrereqChecks(): Promise<PrereqCheck[]> {
 			name: 'az',
 			label: 'Azure CLI installed',
 			ok: azInstalled,
-			required: false,
+			required: true,
 			hint: 'Install: https://learn.microsoft.com/cli/azure/install-azure-cli',
 		},
 		{
 			name: 'az-login',
 			label: 'Azure CLI logged in',
 			ok: azLoggedIn,
-			required: false,
+			required: true,
 			hint: 'Run `! az login` to authenticate, then re-check.',
 		},
 	];
