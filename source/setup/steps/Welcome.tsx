@@ -17,7 +17,7 @@ export default function Welcome({onNext}: Props) {
 			<Box marginTop={1} flexDirection="column">
 				<Text>This one-time wizard will:</Text>
 				<Text>• check required tools (ssh, scp, Azure CLI)</Text>
-				<Text>• generate an SSH key for you to send to your admin</Text>
+				<Text>• use your existing SSH key, or generate a new one for you</Text>
 			</Box>
 			<Box marginTop={1}>
 				<Text>Your setup is saved, so you only have to do this once.</Text>
