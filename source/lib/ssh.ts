@@ -181,6 +181,16 @@ function shellQuote(value: string): string {
 	return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
+/**
+ * Make a file name safe to pass through caption.sh's *unquoted* `$1 $2` and the
+ * remote shell: keep alphanumerics, dot, dash, underscore; collapse everything
+ * else (spaces, quotes, …) to underscores. The user's local file is untouched —
+ * this only governs the name of the copy uploaded to the VM.
+ */
+export function sanitizeRemoteName(name: string): string {
+	return name.replace(/[^A-Za-z0-9._-]/g, '_');
+}
+
 export type LocalFileResult = {ok: true} | {ok: false; error: string};
 
 /**
@@ -201,10 +211,14 @@ export async function validateLocalFile(
 	}
 }
 
-/** Upload a local media file into the VM's upload dir (see upload.sh). */
+/**
+ * Upload a local media file into the VM's upload dir (see upload.sh), storing it
+ * under `remoteName` (a sanitized, space-free name — see sanitizeRemoteName).
+ */
 export async function uploadFile(
 	config: DaoConfig,
 	localPath: string,
+	remoteName: string,
 ): Promise<void> {
 	const {host, username, privateKeyPath, remoteUploadDir} = config.vm;
 	const result = await execa(
@@ -212,7 +226,7 @@ export async function uploadFile(
 		[
 			...hardeningOptions(privateKeyPath),
 			localPath,
-			`${username}@${host}:${remoteUploadDir}/`,
+			`${username}@${host}:${remoteUploadDir}/${remoteName}`,
 		],
 		{reject: false},
 	);
@@ -238,22 +252,27 @@ export async function runTranscription(
 	outputName: string,
 ): Promise<void> {
 	const {host, username, privateKeyPath, remoteEphemeralDir} = config.vm;
+	const transcriptPath = `${remoteEphemeralDir}/${outputName}`;
 	// `mkdir -p` is idempotent: it ensures the ephemeral dir exists (so caption.sh's
 	// `mv` lands the transcript *inside* a folder rather than renaming it to a
-	// stray file) and is a no-op on every subsequent run.
+	// stray file) and is a no-op on every subsequent run. The trailing `test -f`
+	// is the real success check: caption.sh ends in `deactivate` and so exits 0
+	// even when test.py crashed, so we instead require the transcript to exist.
 	const remoteCommand = `mkdir -p ${shellQuote(
 		remoteEphemeralDir,
 	)} && bash ${REMOTE_CAPTION_SCRIPT} ${shellQuote(inputName)} ${shellQuote(
 		outputName,
-	)}`;
+	)} && test -f ${shellQuote(transcriptPath)}`;
 	const result = await execa(
 		'ssh',
 		[...hardeningOptions(privateKeyPath), `${username}@${host}`, remoteCommand],
 		{reject: false},
 	);
 	if (result.exitCode !== 0) {
+		const detail = result.stderr?.trim();
 		throw new Error(
-			result.stderr || `Transcription failed (exit ${result.exitCode})`,
+			detail ||
+				`No transcript "${outputName}" appeared in ${remoteEphemeralDir} — test.py likely failed.`,
 		);
 	}
 }

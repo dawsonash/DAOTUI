@@ -1,6 +1,7 @@
 import {useState} from 'react';
 import {basename, extname} from 'node:path';
 import {loadConfig} from '../config/store.js';
+import {sanitizeRemoteName} from '../lib/ssh.js';
 import SelectFile from './steps/SelectFile.js';
 import Confirm from './steps/Confirm.js';
 import RunTranscription from './steps/RunTranscription.js';
@@ -29,8 +30,10 @@ export default function TranscribeFlow({onDone}: Props) {
 	const [step, setStep] = useState<Step>('selectFile');
 	const [localPath, setLocalPath] = useState('');
 
-	const inputName = localPath ? basename(localPath) : '';
-	const outputName = localPath ? deriveOutputName(localPath) : '';
+	// Sanitize once: the upload, the caption.sh args, and the transcript name all
+	// use the space-free remote name so caption.sh's unquoted `$1 $2` can't split.
+	const inputName = localPath ? sanitizeRemoteName(basename(localPath)) : '';
+	const outputName = inputName ? deriveOutputName(inputName) : '';
 
 	switch (step) {
 		case 'selectFile':

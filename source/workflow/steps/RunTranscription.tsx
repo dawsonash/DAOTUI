@@ -47,7 +47,8 @@ export default function RunTranscription({
 			setStatus({state: 'running', phase});
 			try {
 				if (phase === 'vm') await startVm(config);
-				else if (phase === 'upload') await uploadFile(config, localPath);
+				else if (phase === 'upload')
+					await uploadFile(config, localPath, inputName);
 				else await runTranscription(config, inputName, outputName);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
