@@ -2,32 +2,54 @@ import {useEffect, useState} from 'react';
 import {Box, Text, useInput} from 'ink';
 import Spinner from 'ink-spinner';
 import type {DaoConfig} from '../../config/store.js';
-import {startVm} from '../../lib/azure.js';
-import {runTranscription, uploadFile} from '../../lib/ssh.js';
+import {deallocateVm, startVm} from '../../lib/azure.js';
+import {
+	cleanupRemote,
+	downloadFile,
+	runTranscription,
+	uploadFile,
+} from '../../lib/ssh.js';
 
 type Props = {
 	config: DaoConfig;
 	localPath: string;
 	inputName: string;
 	outputName: string;
+	localOutputName: string;
+	localOutputPath: string;
 	onNext: () => void;
 	onBack: () => void;
 };
 
-type Phase = 'vm' | 'upload' | 'transcribe';
+type Phase =
+	| 'vm'
+	| 'upload'
+	| 'transcribe'
+	| 'download'
+	| 'cleanup'
+	| 'deallocate';
 
 type Status =
 	| {state: 'running'; phase: Phase}
 	| {state: 'failed'; phase: Phase; message: string}
 	| {state: 'done'};
 
-const PHASES: Phase[] = ['vm', 'upload', 'transcribe'];
+const PHASES: Phase[] = [
+	'vm',
+	'upload',
+	'transcribe',
+	'download',
+	'cleanup',
+	'deallocate',
+];
 
 export default function RunTranscription({
 	config,
 	localPath,
 	inputName,
 	outputName,
+	localOutputName,
+	localOutputPath,
 	onNext,
 	onBack,
 }: Props) {
@@ -36,7 +58,10 @@ export default function RunTranscription({
 	function label(phase: Phase): string {
 		if (phase === 'vm') return 'Start VM';
 		if (phase === 'upload') return `Upload ${inputName}`;
-		return 'Transcribe (this can take a while)';
+		if (phase === 'transcribe') return 'Transcribe (this can take a while)';
+		if (phase === 'download') return `Download ${localOutputName}`;
+		if (phase === 'cleanup') return 'Clean up VM';
+		return 'Deallocate VM';
 	}
 
 	// Run phases sequentially from `fromIndex`; the earlier phases are idempotent
@@ -49,7 +74,13 @@ export default function RunTranscription({
 				if (phase === 'vm') await startVm(config);
 				else if (phase === 'upload')
 					await uploadFile(config, localPath, inputName);
-				else await runTranscription(config, inputName, outputName);
+				else if (phase === 'transcribe')
+					await runTranscription(config, inputName, outputName);
+				else if (phase === 'download')
+					await downloadFile(config, outputName, localOutputPath);
+				else if (phase === 'cleanup')
+					await cleanupRemote(config, inputName, outputName);
+				else await deallocateVm(config);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				setStatus({state: 'failed', phase, message});

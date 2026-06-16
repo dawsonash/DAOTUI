@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import {basename, extname} from 'node:path';
+import {basename, dirname, extname, join} from 'node:path';
 import {loadConfig} from '../config/store.js';
 import {sanitizeRemoteName} from '../lib/ssh.js';
 import SelectFile from './steps/SelectFile.js';
@@ -35,6 +35,13 @@ export default function TranscribeFlow({onDone}: Props) {
 	const inputName = localPath ? sanitizeRemoteName(basename(localPath)) : '';
 	const outputName = inputName ? deriveOutputName(inputName) : '';
 
+	// The local transcript keeps the user's original (unsanitized) name and lands
+	// next to the source file, while the VM copy uses the sanitized outputName.
+	const localOutputName = localPath ? deriveOutputName(basename(localPath)) : '';
+	const localOutputPath = localPath
+		? join(dirname(localPath), localOutputName)
+		: '';
+
 	switch (step) {
 		case 'selectFile':
 			return (
@@ -64,13 +71,13 @@ export default function TranscribeFlow({onDone}: Props) {
 					localPath={localPath}
 					inputName={inputName}
 					outputName={outputName}
+					localOutputName={localOutputName}
+					localOutputPath={localOutputPath}
 					onNext={() => setStep('result')}
 					onBack={() => setStep('selectFile')}
 				/>
 			);
 		case 'result':
-			return (
-				<Result config={config} outputName={outputName} onDone={onDone} />
-			);
+			return <Result localOutputPath={localOutputPath} onDone={onDone} />;
 	}
 }

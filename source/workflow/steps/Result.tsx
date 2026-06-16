@@ -1,13 +1,11 @@
 import {Box, Text, useInput} from 'ink';
-import type {DaoConfig} from '../../config/store.js';
 
 type Props = {
-	config: DaoConfig;
-	outputName: string;
+	localOutputPath: string;
 	onDone: () => void;
 };
 
-export default function Result({config, outputName, onDone}: Props) {
+export default function Result({localOutputPath, onDone}: Props) {
 	useInput((_input, key) => {
 		if (key.return) onDone();
 	});
@@ -18,17 +16,14 @@ export default function Result({config, outputName, onDone}: Props) {
 				✓ Transcription complete
 			</Text>
 			<Box marginTop={1} flexDirection="column">
-				<Text>
-					Your transcript <Text color="cyan">{outputName}</Text> is on the VM in:
-				</Text>
-				<Text dimColor>
+				<Text>Your transcript was saved to:</Text>
+				<Text color="cyan">
 					{'  '}
-					{config.vm.username}@{config.vm.host}:~/{config.vm.remoteEphemeralDir}
+					{localOutputPath}
 				</Text>
 				<Box marginTop={1}>
 					<Text dimColor>
-						Downloading it from the TUI isn&apos;t wired up yet — grab it from the
-						VM for now.
+						The VM was cleaned up and deallocated.
 					</Text>
 				</Box>
 			</Box>

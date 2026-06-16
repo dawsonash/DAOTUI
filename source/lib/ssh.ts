@@ -277,11 +277,58 @@ export async function runTranscription(
 	}
 }
 
-/** Download a transcript from the VM's ephemeral dir (see download.sh). */
+/**
+ * Download a transcript from the VM's ephemeral dir to `localPath` (see
+ * download2.sh). `remoteName` is the (sanitized) transcript basename; the local
+ * file may keep the user's original, unsanitized name.
+ */
 export async function downloadFile(
-	_config: DaoConfig,
-	_remoteName: string,
-	_localPath: string,
+	config: DaoConfig,
+	remoteName: string,
+	localPath: string,
 ): Promise<void> {
-	throw new Error('downloadFile not implemented yet (workflow phase)');
+	const {host, username, privateKeyPath, remoteEphemeralDir} = config.vm;
+	const result = await execa(
+		'scp',
+		[
+			...hardeningOptions(privateKeyPath),
+			`${username}@${host}:${remoteEphemeralDir}/${remoteName}`,
+			localPath,
+		],
+		{reject: false},
+	);
+	if (result.exitCode !== 0) {
+		throw new Error(result.stderr || `scp failed (exit ${result.exitCode})`);
+	}
+}
+
+/**
+ * Delete the transcript and the uploaded audio from the VM once the transcript
+ * is safely downloaded, so we don't accrue cloud storage. Uses `rm -f` because
+ * caption.sh may already have removed the input — a missing file shouldn't fail
+ * the cleanup. Only the two named files are removed; the persistent upload dir
+ * itself is left intact.
+ */
+export async function cleanupRemote(
+	config: DaoConfig,
+	inputName: string,
+	outputName: string,
+): Promise<void> {
+	const {host, username, privateKeyPath, remoteUploadDir, remoteEphemeralDir} =
+		config.vm;
+	const transcriptPath = `${remoteEphemeralDir}/${outputName}`;
+	const inputPath = `${remoteUploadDir}/${inputName}`;
+	const remoteCommand = `rm -f ${shellQuote(transcriptPath)} ${shellQuote(
+		inputPath,
+	)}`;
+	const result = await execa(
+		'ssh',
+		[...hardeningOptions(privateKeyPath), `${username}@${host}`, remoteCommand],
+		{reject: false},
+	);
+	if (result.exitCode !== 0) {
+		throw new Error(
+			result.stderr?.trim() || `Cleanup failed (exit ${result.exitCode})`,
+		);
+	}
 }

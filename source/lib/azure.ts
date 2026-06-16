@@ -44,6 +44,5 @@ export async function deallocateVm(config: DaoConfig): Promise<void> {
 		config.azure.resourceGroup,
 		'-n',
 		config.azure.vmName,
-		'yes',
 	]);
 }
