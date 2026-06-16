@@ -1,4 +1,4 @@
-import {access, mkdir, readdir, readFile, rm} from 'node:fs/promises';
+import {access, mkdir, readdir, readFile, rm, stat} from 'node:fs/promises';
 import {homedir} from 'node:os';
 import {dirname, join} from 'node:path';
 import {execa} from 'execa';
@@ -156,14 +156,101 @@ export async function testConnection(target: ConnectionTarget): Promise<boolean>
 	}
 }
 
-// --- Workflow-phase mirror upload.sh / download.sh functionality ---
+// --- Workflow-phase mirror upload.sh / caption.sh functionality ---
 
-/** Upload a local audio file to the VM's upload dir (see upload.sh). */
+// Hardening flags shared by non-interactive scp/ssh, mirroring testConnection:
+// the key, BatchMode so a missing/unauthorized key fails fast instead of
+// prompting, and accept-new host keys so a first connection isn't blocked.
+function hardeningOptions(privateKeyPath: string): string[] {
+	return [
+		'-i',
+		privateKeyPath,
+		'-o',
+		'BatchMode=yes',
+		'-o',
+		'StrictHostKeyChecking=accept-new',
+		'-o',
+		'ConnectTimeout=8',
+	];
+}
+
+// Single-quote a value for safe interpolation into a remote shell command,
+// escaping any embedded single quotes. Lets file names with spaces survive the
+// trip through ssh's remote shell.
+function shellQuote(value: string): string {
+	return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+export type LocalFileResult = {ok: true} | {ok: false; error: string};
+
+/**
+ * Confirm a local path points at a real file before we start the VM and upload.
+ * Rejects missing paths and directories with a student-friendly message.
+ */
+export async function validateLocalFile(
+	localPath: string,
+): Promise<LocalFileResult> {
+	try {
+		const info = await stat(localPath);
+		if (!info.isFile()) {
+			return {ok: false, error: `${localPath} is not a file`};
+		}
+		return {ok: true};
+	} catch {
+		return {ok: false, error: `No file found at ${localPath}`};
+	}
+}
+
+/** Upload a local media file into the VM's upload dir (see upload.sh). */
 export async function uploadFile(
-	_config: DaoConfig,
-	_localPath: string,
+	config: DaoConfig,
+	localPath: string,
 ): Promise<void> {
-	throw new Error('uploadFile not implemented yet (workflow phase)');
+	const {host, username, privateKeyPath, remoteUploadDir} = config.vm;
+	const result = await execa(
+		'scp',
+		[
+			...hardeningOptions(privateKeyPath),
+			localPath,
+			`${username}@${host}:${remoteUploadDir}/`,
+		],
+		{reject: false},
+	);
+	if (result.exitCode !== 0) {
+		throw new Error(result.stderr || `scp failed (exit ${result.exitCode})`);
+	}
+}
+
+// The transcription script on the VM, invoked as `bash <script> <in> <out>`
+// (see caption.sh): it activates the venv, runs WhisperX over the uploaded
+// input, moves the transcript to the ephemeral dir, and removes the input.
+// Adjust if the script lives elsewhere on the VM.
+const REMOTE_CAPTION_SCRIPT = 'caption.sh';
+
+/**
+ * Run caption.sh on the VM against an already-uploaded file. `inputName` and
+ * `outputName` are basenames relative to the upload dir (caption.sh cd's into
+ * it before running). This blocks for the duration of the transcription.
+ */
+export async function runTranscription(
+	config: DaoConfig,
+	inputName: string,
+	outputName: string,
+): Promise<void> {
+	const {host, username, privateKeyPath} = config.vm;
+	const remoteCommand = `bash ${REMOTE_CAPTION_SCRIPT} ${shellQuote(
+		inputName,
+	)} ${shellQuote(outputName)}`;
+	const result = await execa(
+		'ssh',
+		[...hardeningOptions(privateKeyPath), `${username}@${host}`, remoteCommand],
+		{reject: false},
+	);
+	if (result.exitCode !== 0) {
+		throw new Error(
+			result.stderr || `Transcription failed (exit ${result.exitCode})`,
+		);
+	}
 }
 
 /** Download a transcript from the VM's ephemeral dir (see download.sh). */
