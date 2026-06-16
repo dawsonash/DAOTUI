@@ -237,10 +237,15 @@ export async function runTranscription(
 	inputName: string,
 	outputName: string,
 ): Promise<void> {
-	const {host, username, privateKeyPath} = config.vm;
-	const remoteCommand = `bash ${REMOTE_CAPTION_SCRIPT} ${shellQuote(
-		inputName,
-	)} ${shellQuote(outputName)}`;
+	const {host, username, privateKeyPath, remoteEphemeralDir} = config.vm;
+	// `mkdir -p` is idempotent: it ensures the ephemeral dir exists (so caption.sh's
+	// `mv` lands the transcript *inside* a folder rather than renaming it to a
+	// stray file) and is a no-op on every subsequent run.
+	const remoteCommand = `mkdir -p ${shellQuote(
+		remoteEphemeralDir,
+	)} && bash ${REMOTE_CAPTION_SCRIPT} ${shellQuote(inputName)} ${shellQuote(
+		outputName,
+	)}`;
 	const result = await execa(
 		'ssh',
 		[...hardeningOptions(privateKeyPath), `${username}@${host}`, remoteCommand],
