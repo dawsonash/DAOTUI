@@ -24,6 +24,17 @@ export function deriveOutputName(localPath: string): string {
 	return `${stem}${OUTPUT_EXT}`;
 }
 
+/**
+ * Derive the word-confidence JSON name from the transcript name (same stem, `.json`).
+ * Mirrors what caption_qc.sh/test_qc.py write next to the transcript.
+ */
+export function deriveJsonName(outputName: string): string {
+	const stem =
+		outputName.slice(0, outputName.length - extname(outputName).length) ||
+		outputName;
+	return `${stem}.json`;
+}
+
 // Linear upload → transcribe flow, mirroring SetupWizard's switch-on-step shape.
 export default function TranscribeFlow({onDone}: Props) {
 	const config = loadConfig();
@@ -34,6 +45,7 @@ export default function TranscribeFlow({onDone}: Props) {
 	// use the space-free remote name so caption.sh's unquoted `$1 $2` can't split.
 	const inputName = localPath ? sanitizeRemoteName(basename(localPath)) : '';
 	const outputName = inputName ? deriveOutputName(inputName) : '';
+	const jsonName = outputName ? deriveJsonName(outputName) : '';
 
 	switch (step) {
 		case 'selectFile':
@@ -70,7 +82,13 @@ export default function TranscribeFlow({onDone}: Props) {
 			);
 		case 'result':
 			return (
-				<Result config={config} outputName={outputName} onDone={onDone} />
+				<Result
+					config={config}
+					outputName={outputName}
+					jsonName={jsonName}
+					localPath={localPath}
+					onDone={onDone}
+				/>
 			);
 	}
 }
