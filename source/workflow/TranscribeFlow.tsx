@@ -6,8 +6,9 @@ import SelectFile from './steps/SelectFile.js';
 import Confirm from './steps/Confirm.js';
 import RunTranscription from './steps/RunTranscription.js';
 import Result from './steps/Result.js';
+import Teardown from './steps/Teardown.js';
 
-type Step = 'selectFile' | 'confirm' | 'run' | 'result';
+type Step = 'selectFile' | 'confirm' | 'run' | 'result' | 'teardown';
 
 type Props = {
 	onDone: () => void;
@@ -24,6 +25,17 @@ export function deriveOutputName(localPath: string): string {
 	return `${stem}${OUTPUT_EXT}`;
 }
 
+/**
+ * Derive the word-confidence JSON name from the transcript name (same stem, `.json`).
+ * Mirrors what caption_qc.sh/test_qc.py write next to the transcript.
+ */
+export function deriveJsonName(outputName: string): string {
+	const stem =
+		outputName.slice(0, outputName.length - extname(outputName).length) ||
+		outputName;
+	return `${stem}.json`;
+}
+
 // Linear upload → transcribe flow, mirroring SetupWizard's switch-on-step shape.
 export default function TranscribeFlow({onDone}: Props) {
 	const config = loadConfig();
@@ -34,6 +46,7 @@ export default function TranscribeFlow({onDone}: Props) {
 	// use the space-free remote name so caption.sh's unquoted `$1 $2` can't split.
 	const inputName = localPath ? sanitizeRemoteName(basename(localPath)) : '';
 	const outputName = inputName ? deriveOutputName(inputName) : '';
+	const jsonName = outputName ? deriveJsonName(outputName) : '';
 
 	// The local transcript keeps the user's original (unsanitized) name and lands
 	// next to the source file, while the VM copy uses the sanitized outputName.
@@ -78,6 +91,25 @@ export default function TranscribeFlow({onDone}: Props) {
 				/>
 			);
 		case 'result':
-			return <Result localOutputPath={localOutputPath} onDone={onDone} />;
+			return (
+				<Result
+					config={config}
+					outputName={outputName}
+					jsonName={jsonName}
+					localPath={localPath}
+					localOutputPath={localOutputPath}
+					onDone={() => setStep('teardown')}
+				/>
+			);
+		case 'teardown':
+			return (
+				<Teardown
+					config={config}
+					inputName={inputName}
+					outputName={outputName}
+					jsonName={jsonName}
+					onDone={onDone}
+				/>
+			);
 	}
 }

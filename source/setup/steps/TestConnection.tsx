@@ -45,7 +45,7 @@ export default function TestConnection({target, onNext}: Props) {
 							authorizes the key you just sent.
 						</Text>
 						<Text dimColor>
-							Your setup is still saved. Re-run the tool once authorized. Contact Dawson if you have questions.
+							Your setup is still saved. Re-run the tool once authorized, and your VM is allocated.
 						</Text>
 					</>
 				)}

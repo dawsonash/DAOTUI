@@ -236,10 +236,11 @@ export async function uploadFile(
 }
 
 // The transcription script on the VM, invoked as `bash <script> <in> <out>`
-// (see caption.sh): it activates the venv, runs WhisperX over the uploaded
-// input, moves the transcript to the ephemeral dir, and removes the input.
-// Adjust if the script lives elsewhere on the VM.
-const REMOTE_CAPTION_SCRIPT = 'caption.sh';
+// (see vm/caption_qc.sh): it activates the venv, runs WhisperX over the uploaded
+// input via test_qc.py, then moves *both* the transcript and the word-confidence
+// JSON sidecar into the ephemeral dir. This is the QC variant of the original
+// caption.sh — deploy vm/caption_qc.sh + vm/test_qc.py to the VM (see vm/README).
+const REMOTE_CAPTION_SCRIPT = 'caption_qc.sh';
 
 /**
  * Run caption.sh on the VM against an already-uploaded file. `inputName` and
@@ -278,6 +279,35 @@ export async function runTranscription(
 }
 
 /**
+ * Read a file out of the VM's ephemeral dir as text (via `ssh … cat`). Used to pull
+ * the word-confidence JSON sidecar and, when applying corrections, the transcript
+ * itself. `name` is a basename relative to remoteEphemeralDir.
+ */
+export async function fetchEphemeralFile(
+	config: DaoConfig,
+	name: string,
+): Promise<string> {
+	const {host, username, privateKeyPath, remoteEphemeralDir} = config.vm;
+	const remotePath = `${remoteEphemeralDir}/${name}`;
+	const result = await execa(
+		'ssh',
+		[
+			...hardeningOptions(privateKeyPath),
+			`${username}@${host}`,
+			`cat ${shellQuote(remotePath)}`,
+		],
+		{reject: false},
+	);
+	if (result.exitCode !== 0) {
+		const detail = result.stderr?.trim();
+		throw new Error(
+			detail || `Could not read ${name} from ${remoteEphemeralDir} on the VM.`,
+		);
+	}
+	return result.stdout;
+}
+
+/**
  * Download a transcript from the VM's ephemeral dir to `localPath` (see
  * download2.sh). `remoteName` is the (sanitized) transcript basename; the local
  * file may keep the user's original, unsanitized name.
@@ -303,24 +333,27 @@ export async function downloadFile(
 }
 
 /**
- * Delete the transcript and the uploaded audio from the VM once the transcript
- * is safely downloaded, so we don't accrue cloud storage. Uses `rm -f` because
- * caption.sh may already have removed the input — a missing file shouldn't fail
- * the cleanup. Only the two named files are removed; the persistent upload dir
- * itself is left intact.
+ * Delete the uploaded audio, the transcript, and the word-confidence JSON sidecar
+ * (caption_qc.sh moves all three off the VM into the upload/ephemeral dirs) once
+ * the transcript is safely downloaded, so we don't accrue cloud storage. Uses
+ * `rm -f` because caption.sh may already have removed the input and a non-QC run
+ * leaves no JSON — a missing file shouldn't fail the cleanup. Only the named files
+ * are removed; the persistent upload/ephemeral dirs themselves are left intact.
  */
 export async function cleanupRemote(
 	config: DaoConfig,
 	inputName: string,
 	outputName: string,
+	jsonName: string,
 ): Promise<void> {
 	const {host, username, privateKeyPath, remoteUploadDir, remoteEphemeralDir} =
 		config.vm;
 	const transcriptPath = `${remoteEphemeralDir}/${outputName}`;
+	const jsonPath = `${remoteEphemeralDir}/${jsonName}`;
 	const inputPath = `${remoteUploadDir}/${inputName}`;
 	const remoteCommand = `rm -f ${shellQuote(transcriptPath)} ${shellQuote(
-		inputPath,
-	)}`;
+		jsonPath,
+	)} ${shellQuote(inputPath)}`;
 	const result = await execa(
 		'ssh',
 		[...hardeningOptions(privateKeyPath), `${username}@${host}`, remoteCommand],
