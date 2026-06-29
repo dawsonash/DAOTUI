@@ -124,36 +124,56 @@ export async function validateExistingKey(
 	}
 }
 
+export type ConnectionProbe =
+	| {ok: true}
+	| {ok: false; reason: 'unauthorized' | 'unreachable'; detail: string};
+
 /**
- * Probe passwordless SSH. Returns true only if the key is already authorized on
- * the VM. Uses BatchMode so a missing/unauthorized key fails fast instead of
- * prompting for a password.
+ * Probe passwordless SSH with `target`'s key, classifying failures so callers can
+ * distinguish "the VM isn't up yet" (`unreachable` — worth retrying) from "the VM
+ * rejected this key" (`unauthorized` — retrying won't help). Uses BatchMode so a
+ * missing/unauthorized key fails fast instead of prompting for a password.
+ */
+export async function probeConnection(
+	target: ConnectionTarget,
+): Promise<ConnectionProbe> {
+	const result = await execa(
+		'ssh',
+		[
+			'-i',
+			target.privateKeyPath,
+			'-o',
+			'BatchMode=yes',
+			'-o',
+			'StrictHostKeyChecking=accept-new',
+			'-o',
+			'ConnectTimeout=8',
+			`${target.username}@${target.host}`,
+			'echo',
+			'ok',
+		],
+		{reject: false},
+	);
+	if (result.exitCode === 0) return {ok: true};
+	const detail = (result.stderr || '').trim();
+	// "Permission denied (publickey)" means the SSH handshake reached the VM but
+	// the key isn't authorized — reachable, so polling is pointless. Everything
+	// else (connection refused, timeout, no route) is a not-up-yet condition.
+	const unauthorized =
+		/permission denied|publickey|too many authentication failures/i.test(detail);
+	return {
+		ok: false,
+		reason: unauthorized ? 'unauthorized' : 'unreachable',
+		detail,
+	};
+}
+
+/**
+ * Boolean wrapper around {@link probeConnection}: true only if the key is already
+ * authorized on the VM.
  */
 export async function testConnection(target: ConnectionTarget): Promise<boolean> {
-	try {
-		await execa(
-			'ssh',
-			[
-				'-i',
-				target.privateKeyPath,
-				'-o',
-				'BatchMode=yes',
-				'-o',
-				'StrictHostKeyChecking=accept-new',
-				'-o',
-				'ConnectTimeout=8',
-				`${target.username}@${target.host}`,
-				'echo',
-				'ok',
-			],
-			{reject: false},
-		).then(result => {
-			if (result.exitCode !== 0) throw new Error(result.stderr);
-		});
-		return true;
-	} catch {
-		return false;
-	}
+	return (await probeConnection(target)).ok;
 }
 
 // --- Workflow-phase mirror upload.sh / caption.sh functionality ---

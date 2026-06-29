@@ -1,6 +1,6 @@
 import {execa} from 'execa';
 import type {DaoConfig} from '../config/store.js';
-import {testConnection} from './ssh.js';
+import {probeConnection} from './ssh.js';
 
 const SSH_POLL_INTERVAL_MS = 3000;
 const SSH_READY_TIMEOUT_MS = 5 * 60 * 1000;
@@ -87,7 +87,16 @@ export async function startVm(
 	onStatus('Waiting for the VM to accept connections…');
 	const deadline = Date.now() + SSH_READY_TIMEOUT_MS;
 	while (Date.now() < deadline) {
-		if (await testConnection(target)) return;
+		const probe = await probeConnection(target);
+		if (probe.ok) return;
+		// The VM answered but rejected the key — polling won't authorize it, so
+		// fail fast with an actionable message instead of waiting out the timeout.
+		if (probe.reason === 'unauthorized') {
+			throw new Error(
+				`The VM rejected your SSH key — it isn't authorized on the VM yet. ` +
+					`Re-run setup to re-authorize it. (${probe.detail})`,
+			);
+		}
 		await sleep(SSH_POLL_INTERVAL_MS);
 	}
 	throw new Error('VM did not become reachable over SSH in time.');
