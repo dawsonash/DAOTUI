@@ -39,7 +39,7 @@ export default function Confirm({
 			</Box>
 			<Box marginTop={1}>
 				<Text dimColor>
-					The VM is started if it isn&apos;t already. Your local file is kept.
+					This starts the VM and uploads a copy of your file. Your original stays on your computer.
 				</Text>
 			</Box>
 			<Box marginTop={1}>

@@ -22,7 +22,7 @@ type Props = {
 type Phase = 'vm' | 'upload' | 'transcribe' | 'download';
 
 type Status =
-	| {state: 'running'; phase: Phase}
+	| {state: 'running'; phase: Phase; detail?: string}
 	| {state: 'failed'; phase: Phase; message: string}
 	| {state: 'done'};
 
@@ -54,7 +54,10 @@ export default function RunTranscription({
 			const phase = PHASES[i]!;
 			setStatus({state: 'running', phase});
 			try {
-				if (phase === 'vm') await startVm(config);
+				if (phase === 'vm')
+					await startVm(config, detail =>
+						setStatus({state: 'running', phase, detail}),
+					);
 				else if (phase === 'upload')
 					await uploadFile(config, localPath, inputName);
 				else if (phase === 'transcribe')
@@ -104,7 +107,12 @@ export default function RunTranscription({
 							) : (
 								<Text dimColor>○ </Text>
 							)}
-							<Text dimColor={!done && !running && !failed}>{label(phase)}</Text>
+							<Text dimColor={!done && !running && !failed}>
+								{label(phase)}
+								{running && status.state === 'running' && status.detail
+									? ` — ${status.detail}`
+									: ''}
+							</Text>
 						</Box>
 					);
 				})}
